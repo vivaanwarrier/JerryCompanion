@@ -9,7 +9,7 @@
                                                           │
                           [Orchestrator (main.js): sentiment + ambient light + button state]
                                                           │
-                                     [/api/agent] ──> [Claude API + tool use]
+                     [Mood agent (/api/agent)] ──> [LLM: Claude API + tool use]
                                                           │
                                  tool calls: set_face / move_servo / display_message / play_tone
                                                           │
@@ -18,7 +18,7 @@
 ```
 
 Jerry's firmware only ever (a) reads its two inputs and (b) executes command
-strings. All reasoning is off-board. The agent runs **once per meaningful
+strings. All reasoning is off-board. The mood agent runs **once per meaningful
 event** — a completed transcription or a button press — never on a timer, so
 API cost stays near zero.
 
@@ -31,7 +31,7 @@ Plain text, one line per message, 9600 baud.
 LIGHT:412,BTN:0
 ```
 
-**Browser → Jerry** (once per agent decision):
+**Browser → Jerry** (once per mood-agent decision):
 ```
 FACE:SLEEPY;SERVO:NOD;LCD:Rough days happen. Rest up.;TONE:NONE
 ```
@@ -46,7 +46,12 @@ Malformed or partial lines are ignored on both sides — Jerry keeps running,
 | `LCD` | free text (semicolons stripped client-side) |
 | `TONE` | `CHIME` `GENTLE_BEEP` `NONE` |
 
-## The agent
+## The mood agent
+
+The mood agent is Jerry's own reasoning component (`api/agent.js`). It's a small
+agent — an LLM (reached via the Claude API) given the four tools below and left
+to choose how to call them. It is not a service run by anyone else; it's part of
+this project and you own it.
 
 **Role:** interpret how the user is doing (sentiment label + raw text) plus the
 room's ambient light, and decide Jerry's single coordinated reaction.
@@ -75,15 +80,15 @@ Light bucketing lives in `api/agent.js` (`DIM_BELOW` / `BRIGHT_ABOVE`, raw
 
 ## Design decisions
 
-- **Sentiment on-device, agent in the cloud.** The classifier is small and runs
-  fine in WASM; the Claude API key cannot live in browser code, so a single
-  stateless serverless function proxies it.
+- **Sentiment on-device, mood agent in the cloud.** The classifier is small and
+  runs fine in WASM; the Claude API key the mood agent needs cannot live in
+  browser code, so a single stateless serverless function proxies it.
 - **Binary model → three buckets.** DistilBERT SST-2 is positive/negative only.
   Low-confidence predictions (`score < 0.6`) are treated as neutral rather than
   forcing a side.
 - **Firmware stays dumb.** Keeps hardware debugging separable from software
   debugging and lets the whole protocol be exercised from the Serial Monitor.
-- **Event-driven, not polled.** One agent call per user action.
+- **Event-driven, not polled.** One mood-agent call per user action.
 - **Low matrix brightness by default.** Mitigates the regulator current-draw
   issue before it happens (see [`docs/wiring.md`](docs/wiring.md)).
 
@@ -95,5 +100,5 @@ before integration. Full pin map and the current-draw gotcha are in
 
 ## Stretch goals (not yet built)
 
-- DHT11 temp/humidity on A1 → extra agent context.
+- DHT11 temp/humidity on A1 → extra context for the mood agent.
 - IR receiver on A2 → alternate physical input to the button.

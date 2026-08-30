@@ -2,8 +2,8 @@
 
 Jerry is a small physical desk companion built on an Arduino Uno. You speak to
 it about how you're doing, a pretrained sentiment model reads the emotional tone
-of what you said, a single Claude agent combines that with the room's real
-ambient light level, and Jerry reacts — a pixel-art face, a nodding servo, a
+of what you said, a mood agent combines that with the room's real ambient light
+level, and Jerry reacts — a pixel-art face, a nodding servo, a
 scrolling LCD message, and a short tone.
 
 A real, fully-wired hardware build. Not a simulation.
@@ -17,16 +17,17 @@ A real, fully-wired hardware build. Not a simulation.
    API transcribes it live.
 3. A pretrained DistilBERT SST-2 sentiment model (Transformers.js, in-browser
    WASM) reads the tone.
-4. Sentiment + Jerry's live ambient-light reading go to `/api/agent`, which
-   calls the Claude API with tool use.
+4. Sentiment + Jerry's live ambient-light reading go to the mood agent
+   (`/api/agent`), which reasons with an LLM (the Claude API) and tool use to
+   pick one coordinated reaction.
 5. The browser sends one command string down the USB serial line and Jerry
    physically reacts.
 
 You can also press the physical button on Jerry's board for a check-in with no
 talking.
 
-See [`DESIGN.md`](DESIGN.md) for the architecture, serial protocol, and agent
-definition.
+See [`DESIGN.md`](DESIGN.md) for the architecture, serial protocol, and the
+mood agent's definition.
 
 ## Hardware
 
@@ -61,7 +62,7 @@ click **Connect to Jerry**, and pick the Uno's serial port.
 
 - **Serial protocol:** in the Arduino Serial Monitor (9600 baud, newline), type
   `FACE:HAPPY;SERVO:NOD;LCD:Hello;TONE:CHIME` and confirm Jerry reacts.
-- **Agent in isolation:**
+- **Mood agent in isolation:**
   ```bash
   curl -s localhost:3000/api/agent -H 'content-type: application/json' \
     -d '{"text":"kind of a rough day","sentiment":{"label":"NEGATIVE","score":0.97,"bucket":"negative"},"light":180,"buttonOnly":false}'
@@ -81,10 +82,10 @@ vercel deploy
 
 ```
 arduino/      jerry.ino + per-component bring-up sketches
-src/          frontend: Web Serial, sentiment model, agent client, UI
-api/          agent.js — serverless endpoint calling the Claude API
+src/          frontend: Web Serial, sentiment model, mood-agent client, UI
+api/          agent.js — the mood agent: serverless endpoint calling the Claude API
 docs/         wiring notes + breadboard photos
-DESIGN.md     architecture, protocol, agent definition, decisions
+DESIGN.md     architecture, protocol, mood-agent definition, decisions
 ```
 
 ## Status

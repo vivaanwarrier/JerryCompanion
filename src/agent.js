@@ -1,6 +1,7 @@
 /*
- * agent.js - calls the /api/agent serverless endpoint, which proxies the
- * Claude API (the API key can't live in browser code).
+ * agent.js - client for the mood agent. Calls the /api/agent serverless
+ * endpoint, which reasons with an LLM (the Claude API key can't live in
+ * browser code, so it stays server-side).
  *
  * Input:  { text, sentiment: {label, score, bucket}, light, buttonOnly }
  * Output: { face, servo, lcd, tone, reasoning } - already normalized to the

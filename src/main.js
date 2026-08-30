@@ -4,10 +4,10 @@
  * Flow:
  *   1. Connect to Jerry over USB (Web Serial).
  *   2. Continuously receive LIGHT/BTN telemetry.
- *   3. On "talk": Web Speech API transcribes -> sentiment model -> agent -> Jerry.
- *   4. On button press (physical or on-page): agent runs with buttonOnly=true.
+ *   3. On "talk": Web Speech API transcribes -> sentiment model -> mood agent -> Jerry.
+ *   4. On button press (physical or on-page): mood agent runs with buttonOnly=true.
  *
- * The agent runs once per meaningful event, never on a timer.
+ * The mood agent runs once per meaningful event, never on a timer.
  */
 
 import { JerrySerial } from "./serial.js";

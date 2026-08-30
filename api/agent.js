@@ -1,6 +1,10 @@
 /*
- * /api/agent.js - single serverless endpoint that proxies one Claude API call.
- * No database, no persistent state. Runs once per meaningful event.
+ * /api/agent.js - Jerry's mood agent.
+ *
+ * A single stateless serverless endpoint: it hands the situation to an LLM
+ * (via the Claude API) with the four tools below and lets it decide Jerry's
+ * one coordinated reaction. No database, no persistent state. Runs once per
+ * meaningful event.
  *
  * Request body:
  *   {

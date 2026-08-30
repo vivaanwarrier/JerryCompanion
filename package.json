@@ -1,0 +1,22 @@
+{
+  "name": "jerry-companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Jerry - an AI mood-reactive desk companion built on an Arduino Uno",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev",
+    "build": "echo \"static frontend - no build step\" && exit 0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1"
+  },
+  "devDependencies": {
+    "vercel": "^39.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

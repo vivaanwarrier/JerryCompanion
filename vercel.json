@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": null,
+  "outputDirectory": "src",
+  "cleanUrls": true,
+  "functions": {
+    "api/agent.js": {
+      "maxDuration": 30
+    }
+  }
+}

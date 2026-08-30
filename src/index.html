@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jerry - AI Desk Companion</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main>
+    <h1>Jerry</h1>
+    <p class="tagline">Tell Jerry how you're doing. Jerry reacts.</p>
+
+    <section class="panel">
+      <button id="connect">Connect to Jerry (USB)</button>
+      <span id="serial-status" class="status">disconnected</span>
+    </section>
+
+    <section class="panel">
+      <button id="talk" disabled>Hold to talk</button>
+      <button id="checkin" disabled>Just check in (no talking)</button>
+      <p id="transcript" class="transcript" aria-live="polite"></p>
+    </section>
+
+    <section class="panel readouts">
+      <div><span class="label">Ambient light</span><span id="light">--</span></div>
+      <div><span class="label">Button</span><span id="btn">--</span></div>
+      <div><span class="label">Sentiment</span><span id="sentiment">--</span></div>
+    </section>
+
+    <section class="panel">
+      <h2>Last decision</h2>
+      <pre id="decision">(none yet)</pre>
+    </section>
+
+    <section class="panel log">
+      <h2>Serial log</h2>
+      <pre id="log"></pre>
+    </section>
+  </main>
+
+  <!-- Transformers.js is loaded dynamically as an ES module in sentiment.js -->
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

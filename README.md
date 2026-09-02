@@ -10,7 +10,8 @@ A real, fully-wired hardware build — and it also runs end to end with **no
 hardware at all** (mock mode), so the software can be developed and demoed on
 its own.
 
-> _Demo gif: TODO once the build is assembled._
+**Live demo:** https://jerry-companion.vercel.app — works in mock mode with
+nothing plugged in. _(Demo gif: TODO once the build is assembled.)_
 
 ## How it works
 
@@ -87,13 +88,20 @@ Jerry should react. Malformed lines are ignored — it keeps running.
 
 ## Deploy
 
-Hosted on Vercel — static frontend (`src/`) + the serverless function
-(`api/agent.js`) together. Set `ANTHROPIC_API_KEY` (and optionally
-`ANTHROPIC_MODEL`, `ANTHROPIC_EFFORT`) in the Vercel project environment.
+**Live:** https://jerry-companion.vercel.app
 
-```bash
-vercel deploy
-```
+Hosted on Vercel — static frontend (`src/`) + the serverless function
+(`api/agent.js`) together. The Vercel project is linked to this repo, so every
+push to `main` auto-deploys.
+
+Set `ANTHROPIC_API_KEY` (and optionally `ANTHROPIC_MODEL`, `ANTHROPIC_EFFORT`)
+in the Vercel project's **Settings → Environment Variables**, then redeploy.
+Without it the mood agent runs on the rule-based fallback.
+
+Open the site in **Chrome or Edge on desktop** (Web Serial + Web Speech are
+Chromium-desktop only), set **Mode → USB serial**, connect, and pick Jerry's
+port. The browser talks to the USB device directly; Vercel only handles the
+Claude call.
 
 ## Repo layout
 

@@ -3,43 +3,82 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Jerry - AI Desk Companion</title>
+  <title>Jerry — AI Desk Companion</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <main>
-    <h1>Jerry</h1>
-    <p class="tagline">Tell Jerry how you're doing. Jerry reacts.</p>
+    <header>
+      <h1>Jerry</h1>
+      <p class="tagline">Tell Jerry how you're doing. Jerry reacts.</p>
+    </header>
 
-    <section class="panel">
-      <button id="connect">Connect to Jerry (USB)</button>
-      <span id="serial-status" class="status">disconnected</span>
+    <!-- On-screen Jerry: mirrors whatever command was last sent -->
+    <section class="stage" aria-label="Jerry">
+      <div class="head">
+        <div class="servo" id="servo" data-action="still"></div>
+        <canvas id="matrix" width="240" height="240" aria-label="Jerry's face"></canvas>
+        <div class="lcd" id="lcd">Hi, I'm Jerry.</div>
+        <div class="tone" id="tone-indicator" data-tone="none" title="tone">♪</div>
+      </div>
     </section>
 
-    <section class="panel">
-      <button id="talk" disabled>Hold to talk</button>
-      <button id="checkin" disabled>Just check in (no talking)</button>
+    <section class="panel controls">
+      <label>
+        Mode
+        <select id="mode">
+          <option value="mock">Mock (no hardware)</option>
+          <option value="serial">USB serial (Chrome/Edge)</option>
+        </select>
+      </label>
+      <button id="connect">Connect</button>
+      <span id="status" class="status"></span>
+      <span id="model-badge" class="badge"></span>
+    </section>
+
+    <section class="panel" id="mock-controls" hidden>
+      <label class="slider">
+        Ambient light <output id="slider-val">512</output>
+        <input type="range" id="light-slider" min="0" max="1023" value="512" />
+      </label>
+      <button id="mock-button">Press Jerry's button</button>
+    </section>
+
+    <section class="panel talk-panel">
+      <button id="talk" disabled>Hold to talk <kbd>space</kbd></button>
+      <button id="checkin" disabled>Just check in</button>
+      <p id="speech-note" class="note"></p>
+      <form id="manual-form" hidden>
+        <span id="manual-entry" hidden></span>
+        <input type="text" id="manual-text" placeholder="type how you're doing…" />
+        <button type="submit">Send</button>
+      </form>
       <p id="transcript" class="transcript" aria-live="polite"></p>
     </section>
 
     <section class="panel readouts">
-      <div><span class="label">Ambient light</span><span id="light">--</span></div>
-      <div><span class="label">Button</span><span id="btn">--</span></div>
-      <div><span class="label">Sentiment</span><span id="sentiment">--</span></div>
+      <div><span class="label">Light</span><span id="light-val">—</span> <small id="light-bucket"></small></div>
+      <div><span class="label">Button</span><span id="btn-val">—</span></div>
+      <div><span class="label">Sentiment</span><span id="sentiment-val">—</span> <small id="sentiment-src"></small></div>
     </section>
 
     <section class="panel">
-      <h2>Last decision</h2>
+      <h2>Last decision <small id="decision-src"></small></h2>
       <pre id="decision">(none yet)</pre>
+      <p id="reasoning" class="note"></p>
     </section>
 
-    <section class="panel log">
+    <section class="panel log-panel">
       <h2>Serial log</h2>
       <pre id="log"></pre>
     </section>
+
+    <footer>
+      <a href="https://github.com/vivaanwarrier/JerryCompanion">source</a> ·
+      mock mode needs nothing · USB mode needs Jerry on a cable + Chrome/Edge
+    </footer>
   </main>
 
-  <!-- Transformers.js is loaded dynamically as an ES module in sentiment.js -->
   <script type="module" src="./main.js"></script>
 </body>
 </html>

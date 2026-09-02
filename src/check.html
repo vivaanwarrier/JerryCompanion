@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jerry — sentiment model check</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Sentiment model check</h1>
+      <p class="tagline">
+        Runs the pretrained model (Transformers.js, in-browser) against sample
+        sentences so you can eyeball whether the labels look reasonable before
+        trusting it in the full loop.
+      </p>
+    </header>
+
+    <section class="panel">
+      <button id="run">Run check</button>
+      <span id="status" class="status"></span>
+    </section>
+
+    <section class="panel">
+      <table id="results">
+        <thead>
+          <tr><th>sentence</th><th>expected</th><th>bucket</th><th>label · score</th><th>src</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="summary" class="note"></p>
+    </section>
+
+    <footer><a href="./">← back to Jerry</a></footer>
+  </main>
+
+  <style>
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; }
+    td.match { color: var(--accent); }
+    td.miss { color: var(--hot); }
+  </style>
+
+  <script type="module">
+    import { classify, preloadSentimentModel } from "./lib/sentiment.js";
+
+    const SAMPLES = [
+      ["I had a wonderful day, everything went right", "positive"],
+      ["feeling really good and energized this morning", "positive"],
+      ["so proud of how the project turned out", "positive"],
+      ["honestly a pretty relaxing evening", "positive"],
+      ["it was a rough day, lots going on and I'm exhausted", "negative"],
+      ["I feel anxious and overwhelmed right now", "negative"],
+      ["everything is going wrong and I'm frustrated", "negative"],
+      ["kind of a lonely, heavy day", "negative"],
+      ["not much happened today, just a normal day", "neutral"],
+      ["I went to the store and then came home", "neutral"],
+      ["the weather is cloudy with a chance of rain", "neutral"],
+      ["I'm okay, nothing special going on", "neutral"],
+    ];
+
+    const tbody = document.querySelector("#results tbody");
+    const status = document.getElementById("status");
+    const summary = document.getElementById("summary");
+
+    document.getElementById("run").addEventListener("click", async () => {
+      tbody.innerHTML = "";
+      summary.textContent = "";
+      status.textContent = "loading model…";
+      const ready = await preloadSentimentModel();
+      status.textContent = ready ? "model ready — classifying…" : "model unavailable — using lexicon fallback";
+
+      let matches = 0;
+      for (const [text, expected] of SAMPLES) {
+        const r = await classify(text);
+        const isMatch = r.bucket === expected || (expected === "neutral" && r.score < 0.6);
+        if (isMatch) matches++;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${text}</td>
+          <td>${expected}</td>
+          <td class="${isMatch ? "match" : "miss"}">${r.bucket}</td>
+          <td>${r.label} · ${r.score.toFixed(3)}</td>
+          <td>${r.source}</td>
+          <td>${isMatch ? "✓" : "✕"}</td>`;
+        tbody.appendChild(tr);
+      }
+      status.textContent = "done";
+      summary.textContent =
+        `${matches}/${SAMPLES.length} matched expectations. ` +
+        `Neutral is inherently fuzzy for a binary model — a low score on a neutral ` +
+        `sentence counts as a match.`;
+    });
+  </script>
+</body>
+</html>

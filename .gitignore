@@ -12,6 +12,7 @@ node_modules/
 dist/
 .vercel
 .cache/
+coverage/
 *.tsbuildinfo
 
 # Transformers.js / model cache

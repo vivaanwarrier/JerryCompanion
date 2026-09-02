@@ -1,154 +1,160 @@
 /*
  * /api/agent.js - Jerry's mood agent.
  *
- * A single stateless serverless endpoint: it hands the situation to an LLM
- * (via the Claude API) with the four tools below and lets it decide Jerry's
- * one coordinated reaction. No database, no persistent state. Runs once per
- * meaningful event.
+ * A single stateless serverless endpoint. It hands the situation (what you
+ * said + the sentiment label + the room's light level) to an LLM via the
+ * Claude API and asks for one coordinated reaction, using a single strict
+ * tool call so the result is always schema-valid. No database, no persistent
+ * state. Runs once per meaningful event.
  *
- * Request body:
- *   {
- *     text: string,                       // raw transcription ("" for a button check-in)
- *     sentiment: { label, score, bucket }, // from the client-side model
- *     light: number,                      // raw 0..1023 photoresistor reading
- *     buttonOnly: boolean                 // true = physical button, no speech
- *   }
+ * Request  (POST JSON):
+ *   { text, sentiment: {label, score, bucket}, light, buttonOnly }
+ * Response (JSON):
+ *   { face, servo, lcd, tone, reasoning, source }   source: "llm" | "rules"
  *
- * Response body: { face, servo, lcd, tone, reasoning }
+ * If ANTHROPIC_API_KEY is unset, or the API call fails, it falls back to the
+ * deterministic rules in src/lib/rules.js so Jerry always reacts.
  *
- * Env: ANTHROPIC_API_KEY (required), ANTHROPIC_MODEL (optional)
+ * Env: ANTHROPIC_API_KEY (optional but recommended)
+ *      ANTHROPIC_MODEL    (optional, default "claude-opus-5")
+ *      ANTHROPIC_EFFORT   (optional, default "low")
  */
 
 import Anthropic from "@anthropic-ai/sdk";
+import { FACES, SERVOS, TONES, normalizeReaction, lightBucket } from "../src/lib/protocol.js";
+import { ruleBasedReaction } from "../src/lib/rules.js";
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5";
+const EFFORT = process.env.ANTHROPIC_EFFORT || "low";
 
-// Raw analogRead thresholds; tune against your own room + divider resistor.
-const DIM_BELOW = 300;
-const BRIGHT_ABOVE = 650;
-
-const TOOLS = [
-  {
-    name: "set_face",
-    description: "Choose Jerry's pixel-art facial expression.",
-    input_schema: {
-      type: "object",
-      properties: {
-        expression: {
-          type: "string",
-          enum: ["happy", "neutral", "concerned", "sleepy"],
-        },
+const TOOL = {
+  name: "set_reaction",
+  description:
+    "Set Jerry's single coordinated physical reaction: face, servo gesture, a short LCD line, and a tone.",
+  strict: true,
+  input_schema: {
+    type: "object",
+    additionalProperties: false,
+    required: ["face", "servo", "lcd", "tone", "reasoning"],
+    properties: {
+      face: { type: "string", enum: FACES },
+      servo: { type: "string", enum: SERVOS },
+      lcd: {
+        type: "string",
+        description: "Warm, brief, <= 40 characters. Scrolls across a 16x2 LCD.",
       },
-      required: ["expression"],
-    },
-  },
-  {
-    name: "move_servo",
-    description: "Choose Jerry's small physical gesture.",
-    input_schema: {
-      type: "object",
-      properties: {
-        action: { type: "string", enum: ["nod", "perk", "still"] },
+      tone: { type: "string", enum: TONES },
+      reasoning: {
+        type: "string",
+        description: "One short sentence on why this reaction fits.",
       },
-      required: ["action"],
     },
   },
-  {
-    name: "display_message",
-    description:
-      "Set the short text that scrolls across Jerry's LCD. Max ~40 characters, warm and brief.",
-    input_schema: {
-      type: "object",
-      properties: { text: { type: "string" } },
-      required: ["text"],
-    },
-  },
-  {
-    name: "play_tone",
-    description: "Choose the short sound Jerry plays.",
-    input_schema: {
-      type: "object",
-      properties: {
-        sound: { type: "string", enum: ["chime", "gentle_beep", "none"] },
-      },
-      required: ["sound"],
-    },
-  },
-];
+};
 
 const SYSTEM = `You are the reasoning core of Jerry, a small physical desk companion.
-Given how the user is doing (a sentiment label plus their raw words) and the room's
-ambient light level, decide Jerry's single coordinated physical reaction.
 
-You MUST call all four tools exactly once, in this order: set_face, move_servo,
-display_message, play_tone.
+You are given how the user is doing (a sentiment label plus their raw words, if
+any) and the room's ambient light level. Call set_reaction exactly once with
+Jerry's single coordinated physical response.
 
-Guidance (reason about it, don't apply it mechanically):
-- Positive sentiment -> happy face, perk, upbeat message, chime.
-- Negative + bright/normal room -> concerned face, nod, supportive message, gentle_beep.
-- Negative + dim room -> sleepy face, nod, gentle wind-down message, no tone.
-- Neutral -> neutral face, still, a light acknowledgment, no tone.
-- A button-only check-in (no speech) -> a warm, low-key greeting; lean neutral.
-Keep the LCD message under 40 characters. Never give medical or crisis advice;
-just be kind and brief.`;
+Guidance - reason about it, don't apply it mechanically:
+- Positive sentiment  -> happy face, perk, upbeat line, chime.
+- Negative + bright/normal room -> concerned face, nod, supportive line, gentle_beep.
+- Negative + dim room -> sleepy face, nod, gentle wind-down line, tone none.
+- Neutral -> neutral face, still, a light acknowledgment, tone none.
+- Button-only check-in (no speech) -> a warm, low-key greeting; lean neutral.
 
-function lightBucket(raw) {
-  if (raw <= DIM_BELOW) return "dim";
-  if (raw >= BRIGHT_ABOVE) return "bright";
-  return "normal";
+Keep the LCD line under 40 characters. Be kind and brief. Never give medical,
+crisis, or safety advice - if the user sounds like they're in real distress,
+just be warm and gentle and keep it short.`;
+
+function buildUserMessage({ text, sentiment, light, buttonOnly }) {
+  return [
+    `Event: ${buttonOnly ? "physical button check-in (no speech)" : "user finished speaking"}`,
+    `User said: ${text ? JSON.stringify(text) : "(nothing)"}`,
+    `Sentiment: ${sentiment?.bucket || "neutral"} ` +
+      `(model label ${sentiment?.label ?? "n/a"}, ` +
+      `confidence ${typeof sentiment?.score === "number" ? sentiment.score.toFixed(2) : "n/a"})`,
+    `Ambient light: raw ${light} -> ${lightBucket(light)}`,
+  ].join("\n");
+}
+
+async function askClaude(input) {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 1000,
+    output_config: { effort: EFFORT },
+    system: SYSTEM,
+    tools: [TOOL],
+    tool_choice: { type: "tool", name: "set_reaction" },
+    messages: [{ role: "user", content: buildUserMessage(input) }],
+  });
+
+  if (response.stop_reason === "refusal") {
+    throw new Error(`model refused (${response.stop_details?.category ?? "unknown"})`);
+  }
+
+  const call = response.content.find(
+    (b) => b.type === "tool_use" && b.name === "set_reaction",
+  );
+  if (!call) throw new Error("model did not call set_reaction");
+
+  const { reasoning = "" } = call.input;
+  return { ...normalizeReaction(call.input), reasoning: String(reasoning), source: "llm" };
+}
+
+function validate(body) {
+  const text = typeof body.text === "string" ? body.text.slice(0, 2000) : "";
+  const buttonOnly = body.buttonOnly === true;
+  let light = Number(body.light);
+  if (!Number.isFinite(light)) light = 512;
+  light = Math.min(1023, Math.max(0, Math.round(light)));
+
+  const s = body.sentiment || {};
+  const sentiment = {
+    label: typeof s.label === "string" ? s.label.slice(0, 20) : "NEUTRAL",
+    score: Number.isFinite(Number(s.score)) ? Number(s.score) : 0,
+    bucket: ["positive", "negative", "neutral"].includes(s.bucket) ? s.bucket : "neutral",
+  };
+  return { text, buttonOnly, light, sentiment };
 }
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    res.status(405).json({ error: "POST only" });
-    return;
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "content-type");
+
+  if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+
+  let body;
+  try {
+    body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+  } catch {
+    return res.status(400).json({ error: "invalid JSON body" });
   }
+
+  const input = validate(body);
+
   if (!process.env.ANTHROPIC_API_KEY) {
-    res.status(500).json({ error: "ANTHROPIC_API_KEY is not configured" });
-    return;
+    res.setHeader("x-jerry-source", "rules");
+    return res.status(200).json(ruleBasedReaction(input));
   }
-
-  const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
-  const { text = "", sentiment = {}, light = 512, buttonOnly = false } = body;
-
-  const userMsg = [
-    `Event: ${buttonOnly ? "physical button check-in (no speech)" : "user finished speaking"}`,
-    `User said: ${text ? JSON.stringify(text) : "(nothing)"}`,
-    `Sentiment: ${sentiment.bucket || "neutral"} (model label ${sentiment.label || "n/a"}, confidence ${
-      typeof sentiment.score === "number" ? sentiment.score.toFixed(2) : "n/a"
-    })`,
-    `Ambient light: raw ${light} -> ${lightBucket(light)}`,
-  ].join("\n");
-
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  let decision = { face: "neutral", servo: "still", lcd: "", tone: "none" };
-  let reasoning = "";
 
   try {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 600,
-      system: SYSTEM,
-      tools: TOOLS,
-      tool_choice: { type: "any" },
-      messages: [{ role: "user", content: userMsg }],
-    });
-
-    for (const block of response.content) {
-      if (block.type === "text") reasoning += block.text;
-      if (block.type !== "tool_use") continue;
-      if (block.name === "set_face") decision.face = block.input.expression;
-      if (block.name === "move_servo") decision.servo = block.input.action;
-      if (block.name === "display_message") decision.lcd = block.input.text;
-      if (block.name === "play_tone") decision.tone = block.input.sound;
-    }
+    const reaction = await askClaude(input);
+    res.setHeader("x-jerry-source", "llm");
+    return res.status(200).json(reaction);
   } catch (err) {
-    res.status(502).json({ error: "Claude API call failed", detail: String(err) });
-    return;
+    console.error("mood agent: falling back to rules -", err?.message || err);
+    res.setHeader("x-jerry-source", "rules");
+    res.setHeader("x-jerry-fallback", "1");
+    return res.status(200).json({
+      ...ruleBasedReaction(input),
+      reasoning: `LLM call failed (${err?.message || "error"}); used rule-based fallback.`,
+    });
   }
-
-  if (!decision.lcd) decision.lcd = buttonOnly ? "Hey. Good to see you." : "Got it.";
-
-  res.status(200).json({ ...decision, reasoning: reasoning.trim() });
 }

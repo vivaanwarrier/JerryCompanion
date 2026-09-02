@@ -3,18 +3,18 @@
 ## Architecture
 
 ```
-[Jerry: photoresistor + button] ──USB serial──> [Browser: Web Serial API]
+[Jerry: photoresistor + button] ──USB serial──> [Browser: transport (serial | mock)]
                                                           │
 [You speak] ─> [Web Speech API: voice→text] ─> [Transformers.js sentiment model] ─> label + score
                                                           │
                           [Orchestrator (main.js): sentiment + ambient light + button state]
                                                           │
-                     [Mood agent (/api/agent)] ──> [LLM: Claude API + tool use]
-                                                          │
-                                 tool calls: set_face / move_servo / display_message / play_tone
+                     [Mood agent (/api/agent)] ──> [LLM: Claude API, one strict tool call]
+                                                          │         (else: deterministic rules)
+                                            set_reaction: { face, servo, lcd, tone, reasoning }
                                                           │
                               <──USB serial── [Browser sends one command string]
-[Jerry: matrix face, servo, LCD, buzzer] ── executes the command
+[Jerry: matrix face, servo, LCD, buzzer] ── executes the command   (on-screen Jerry mirrors it)
 ```
 
 Jerry's firmware only ever (a) reads its two inputs and (b) executes command
@@ -36,36 +36,46 @@ LIGHT:412,BTN:0
 FACE:SLEEPY;SERVO:NOD;LCD:Rough days happen. Rest up.;TONE:NONE
 ```
 
-Malformed or partial lines are ignored on both sides — Jerry keeps running,
-`serial.js` only acts on lines matching the telemetry pattern.
+Malformed or partial lines are ignored on both sides — Jerry keeps running, and
+`parseTelemetry` / `parseCommand` in [`src/lib/protocol.js`](src/lib/protocol.js)
+only act on lines that match. That module is the single source of truth for the
+protocol and is shared by the frontend, the mock, the endpoint, and the tests.
 
 | Field | Values |
 |---|---|
 | `FACE` | `HAPPY` `NEUTRAL` `CONCERNED` `SLEEPY` |
 | `SERVO` | `NOD` `PERK` `STILL` |
-| `LCD` | free text (semicolons stripped client-side) |
+| `LCD` | free text (delimiters + newlines stripped, capped at 80 chars client-side) |
 | `TONE` | `CHIME` `GENTLE_BEEP` `NONE` |
 
 ## The mood agent
 
-The mood agent is Jerry's own reasoning component (`api/agent.js`). It's a small
-agent — an LLM (reached via the Claude API) given the four tools below and left
-to choose how to call them. It is not a service run by anyone else; it's part of
-this project and you own it.
+The mood agent is Jerry's own reasoning component (`api/agent.js`) — a small
+agent that hands the situation to an LLM (via the Claude API) and gets back one
+coordinated reaction. It is not a service run by anyone else; it's part of this
+project and you own it.
 
 **Role:** interpret how the user is doing (sentiment label + raw text) plus the
 room's ambient light, and decide Jerry's single coordinated reaction.
 
 **Trigger:** completed speech transcription, or a button press.
 
-**Tools** (all four called once per decision, in order):
+**Mechanism:** one `client.messages.create` call on `claude-opus-5` (override
+with `ANTHROPIC_MODEL`) at `effort: low`, with a single **strict** tool,
+`set_reaction`, forced via `tool_choice`. Strict mode + an enum schema means the
+result is always protocol-valid — `{ face, servo, lcd, tone, reasoning }` — with
+no multi-tool orchestration to get wrong.
 
-- `set_face(expression)` — `happy` `neutral` `concerned` `sleepy`
-- `move_servo(action)` — `nod` `perk` `still`
-- `display_message(text)` — short string, scrolls on the LCD
-- `play_tone(sound)` — `chime` `gentle_beep` `none`
+Why one tool instead of four (`set_face` / `move_servo` / …): a desk toy must
+*always* end up with a complete, valid command. Four independent tool calls can
+arrive partial, out of order, or need a follow-up turn. One strict call can't.
 
-**Intended behavior shape** (reasoned, not hard-coded):
+**Fallback:** if `ANTHROPIC_API_KEY` is unset, or the API call fails or refuses,
+the endpoint returns a deterministic reaction from
+[`src/lib/rules.js`](src/lib/rules.js) (response header `x-jerry-source: rules`).
+Jerry never freezes.
+
+**Intended behavior shape** (the LLM reasons about this; the rules encode it):
 
 | Sentiment | Ambient light | Reaction |
 |---|---|---|
@@ -75,8 +85,19 @@ room's ambient light, and decide Jerry's single coordinated reaction.
 | Neutral | any | neutral · still · light acknowledgment · none |
 | Button-only check-in | any | warm low-key greeting, lean neutral |
 
-Light bucketing lives in `api/agent.js` (`DIM_BELOW` / `BRIGHT_ABOVE`, raw
-`analogRead` units) — tune to your room and divider resistor.
+Light bucketing lives in `src/lib/protocol.js` (`LIGHT_THRESHOLDS`, raw
+`analogRead` units) — tune `dim` / `bright` to your room and divider resistor.
+
+## Hardware-free simulation
+
+The transport is abstracted ([`src/lib/serial.js`](src/lib/serial.js) vs
+[`src/lib/mock.js`](src/lib/mock.js), same interface). **Mock mode** streams
+telemetry from a light slider + a button, and "executes" commands by driving the
+on-screen Jerry ([`src/lib/face.js`](src/lib/face.js)) — an 8×8 canvas face with
+the same bitmaps as the firmware, an animated servo, a scrolling LCD, and a
+WebAudio tone. The whole pipeline (speech → sentiment → agent → reaction) runs
+with nothing plugged in, so the software is fully testable and demoable on its
+own. The on-screen Jerry also mirrors real hardware in USB mode.
 
 ## Design decisions
 
@@ -89,8 +110,22 @@ Light bucketing lives in `api/agent.js` (`DIM_BELOW` / `BRIGHT_ABOVE`, raw
 - **Firmware stays dumb.** Keeps hardware debugging separable from software
   debugging and lets the whole protocol be exercised from the Serial Monitor.
 - **Event-driven, not polled.** One mood-agent call per user action.
+- **One strict tool call, not four.** Guarantees a complete valid command every
+  time (see the mood-agent section).
+- **Always-answers fallback.** No key / API down → rule-based reaction, so a demo
+  never dead-ends.
 - **Low matrix brightness by default.** Mitigates the regulator current-draw
   issue before it happens (see [`docs/wiring.md`](docs/wiring.md)).
+
+## Testing
+
+| Layer | How |
+|---|---|
+| Protocol + rule engine | `npm test` — Vitest, pure functions, no I/O |
+| Sentiment model | `/check` page — model vs. a dozen labeled sample sentences |
+| Mood agent | `npm run check:agent` — hand-crafted situations → printed decisions |
+| Serial protocol | Arduino Serial Monitor, raw command strings, before the browser is involved |
+| Full loop | mock mode in the browser (now), then real hardware after bring-up |
 
 ## Hardware bring-up
 

@@ -1,9 +1,10 @@
 :root {
-  --bg: #14161a;
-  --panel: #1e2228;
+  --bg: #13151a;
+  --panel: #1d2129;
   --fg: #e8eaed;
   --muted: #9aa0a6;
   --accent: #6ac2a8;
+  --hot: #ff5a3c;
   --border: #2c313a;
 }
 
@@ -15,16 +16,15 @@ body {
   background: var(--bg);
   color: var(--fg);
 }
+body.busy { cursor: progress; }
 
-main {
-  max-width: 620px;
-  margin: 0 auto;
-  padding: 2rem 1.25rem 4rem;
-}
+main { max-width: 640px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
 
-h1 { margin: 0; font-size: 2rem; }
-h2 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin: 0 0 0.5rem; }
-.tagline { color: var(--muted); margin-top: 0.25rem; }
+header h1 { margin: 0; font-size: 2rem; }
+.tagline { color: var(--muted); margin: 0.25rem 0 0; }
+
+h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 0 0 0.5rem; }
+h2 small { text-transform: none; letter-spacing: 0; color: var(--accent); }
 
 .panel {
   background: var(--panel);
@@ -34,39 +34,103 @@ h2 { font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; colo
   margin-top: 1rem;
 }
 
+/* ---- on-screen Jerry ---- */
+.stage {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+  background:
+    radial-gradient(120% 90% at 50% 0%, #232833 0%, #171a20 70%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.5rem;
+}
+.head { position: relative; width: 240px; }
+#matrix {
+  width: 240px; height: 240px;
+  background: #0c0d10;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.servo {
+  position: absolute; top: -14px; left: 50%;
+  width: 46px; height: 10px; margin-left: -23px;
+  background: var(--accent); border-radius: 3px;
+  transform: rotate(var(--angle, 0deg));
+  transform-origin: 50% 120%;
+  transition: transform 0.14s ease;
+}
+.lcd {
+  margin-top: 12px;
+  font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 15px; letter-spacing: 2px;
+  background: #123; color: #9fe7ff;
+  border: 1px solid #2c4a5a; border-radius: 6px;
+  padding: 8px 10px; text-align: center;
+  white-space: pre; overflow: hidden;
+  text-shadow: 0 0 6px rgba(159, 231, 255, 0.5);
+}
+.tone {
+  position: absolute; right: -6px; bottom: 44px;
+  color: var(--muted); font-size: 20px; opacity: 0.3;
+}
+.tone.pulse { animation: tone-pulse 0.6s ease; color: var(--accent); }
+@keyframes tone-pulse {
+  0% { transform: scale(0.6); opacity: 0; }
+  40% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.3; }
+}
+
+/* ---- controls ---- */
+.controls { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+label { color: var(--muted); font-size: 0.85rem; display: inline-flex; gap: 0.4rem; align-items: center; }
+select, input[type="text"] {
+  background: #12141a; color: var(--fg);
+  border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.5rem;
+  font: inherit;
+}
+.slider { display: flex; flex-direction: column; align-items: stretch; gap: 0.3rem; }
+.slider input { width: 100%; }
+
 button {
-  background: var(--accent);
-  color: #10231d;
-  border: 0;
-  border-radius: 8px;
-  padding: 0.6rem 1rem;
-  font-weight: 600;
-  cursor: pointer;
+  background: var(--accent); color: #0f231d;
+  border: 0; border-radius: 8px; padding: 0.55rem 0.9rem;
+  font-weight: 600; cursor: pointer; font: inherit;
 }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
-button + button { margin-left: 0.5rem; }
-
-.status {
-  margin-left: 0.75rem;
-  font-size: 0.85rem;
-  color: var(--muted);
+#talk.listening { background: var(--hot); color: #fff; box-shadow: 0 0 0 4px rgba(255, 90, 60, 0.25); }
+kbd {
+  background: rgba(0,0,0,0.25); border-radius: 4px; padding: 0 4px;
+  font-size: 0.75em; font-family: inherit;
 }
 
-.transcript { min-height: 1.5rem; color: var(--fg); font-style: italic; }
+.talk-panel { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.talk-panel .transcript { flex-basis: 100%; }
 
-.readouts { display: flex; gap: 1.5rem; }
-.readouts .label { display: block; font-size: 0.75rem; color: var(--muted); }
-.readouts span:last-child { font-size: 1.25rem; }
+.status, .badge { font-size: 0.8rem; color: var(--muted); }
+.badge { color: var(--accent); }
+.note { color: var(--muted); font-size: 0.85rem; margin: 0.4rem 0 0; }
+.transcript { min-height: 1.4rem; font-style: italic; margin: 0.5rem 0 0; }
+
+#manual-form { display: flex; gap: 0.4rem; flex-basis: 100%; }
+#manual-form input { flex: 1; }
+
+.readouts { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+.readouts .label { display: block; font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.readouts span:not(.label) { font-size: 1.15rem; }
+.readouts small { color: var(--muted); font-size: 0.75rem; }
 
 pre {
-  background: #12141826;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.75rem;
-  overflow-x: auto;
-  white-space: pre-wrap;
-  font-size: 0.85rem;
-  margin: 0;
+  background: rgba(0,0,0,0.2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.75rem; margin: 0;
+  overflow-x: auto; white-space: pre-wrap; font-size: 0.85rem;
 }
+.log-panel pre { max-height: 180px; overflow-y: auto; }
 
-.log pre { max-height: 200px; overflow-y: auto; }
+footer { margin-top: 2rem; color: var(--muted); font-size: 0.8rem; text-align: center; }
+footer a { color: var(--accent); }
+
+@media (max-width: 480px) {
+  .head, #matrix { width: 200px; }
+  #matrix { height: 200px; }
+}

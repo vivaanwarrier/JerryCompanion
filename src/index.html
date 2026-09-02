@@ -7,77 +7,114 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <main>
-    <header>
-      <h1>Jerry</h1>
-      <p class="tagline">Tell Jerry how you're doing. Jerry reacts.</p>
+  <div class="wrap">
+    <header class="masthead">
+      <span class="brand">JERRY</span>
+      <span class="kicker">AI mood-reactive desk companion</span>
     </header>
 
-    <!-- On-screen Jerry: mirrors whatever command was last sent -->
-    <section class="stage" aria-label="Jerry">
-      <div class="head">
-        <div class="servo" id="servo" data-action="still"></div>
-        <canvas id="matrix" width="240" height="240" aria-label="Jerry's face"></canvas>
-        <div class="lcd" id="lcd">Hi, I'm Jerry.</div>
-        <div class="tone" id="tone-indicator" data-tone="none" title="tone">♪</div>
+    <div class="grid">
+      <div class="col-jerry">
+        <section class="stage" aria-label="Jerry">
+          <div class="head">
+            <div class="servo" id="servo" data-action="still"></div>
+            <canvas id="matrix" width="240" height="240" aria-label="Jerry's face"></canvas>
+            <div class="lcd" id="lcd">Hi, I'm Jerry.</div>
+            <div class="tone" id="tone-indicator" data-tone="none" title="tone">&#9834;</div>
+          </div>
+        </section>
+
+        <div class="readouts">
+          <div class="cell">
+            <span class="k">Light</span>
+            <span class="v" id="light-val">—</span>
+            <span class="sub" id="light-bucket"></span>
+          </div>
+          <div class="cell">
+            <span class="k">Button</span>
+            <span class="v" id="btn-val">—</span>
+          </div>
+          <div class="cell">
+            <span class="k">Sentiment</span>
+            <span class="v" id="sentiment-val">—</span>
+            <span class="sub" id="sentiment-src"></span>
+          </div>
+        </div>
       </div>
-    </section>
 
-    <section class="panel controls">
-      <label>
-        Mode
-        <select id="mode">
-          <option value="mock">Mock (no hardware)</option>
-          <option value="serial">USB serial (Chrome/Edge)</option>
-        </select>
-      </label>
-      <button id="connect">Connect</button>
-      <span id="status" class="status"></span>
-      <span id="model-badge" class="badge"></span>
-    </section>
+      <div class="col-controls">
+        <section class="block">
+          <h2>Connection</h2>
+          <div class="block-body">
+            <div class="row">
+              <label class="field">
+                <span>Mode</span>
+                <select id="mode">
+                  <option value="mock">Mock — no hardware</option>
+                  <option value="serial">USB serial — Chrome / Edge</option>
+                </select>
+              </label>
+              <button id="connect" class="btn-primary">Connect</button>
+            </div>
+            <p class="line">
+              <span id="status" class="status"></span>
+              <span id="model-badge" class="badge"></span>
+            </p>
+          </div>
+        </section>
 
-    <section class="panel" id="mock-controls" hidden>
-      <label class="slider">
-        Ambient light <output id="slider-val">512</output>
-        <input type="range" id="light-slider" min="0" max="1023" value="512" />
-      </label>
-      <button id="mock-button">Press Jerry's button</button>
-    </section>
+        <section class="block" id="mock-controls" hidden>
+          <h2>Mock inputs</h2>
+          <div class="block-body">
+            <label class="field slider">
+              <span>Ambient light <output id="slider-val">512</output></span>
+              <input type="range" id="light-slider" min="0" max="1023" value="512" />
+            </label>
+            <div class="row">
+              <button id="mock-button">Press Jerry's button</button>
+            </div>
+          </div>
+        </section>
 
-    <section class="panel talk-panel">
-      <button id="talk" disabled>Hold to talk <kbd>space</kbd></button>
-      <button id="checkin" disabled>Just check in</button>
-      <p id="speech-note" class="note"></p>
-      <form id="manual-form" hidden>
-        <span id="manual-entry" hidden></span>
-        <input type="text" id="manual-text" placeholder="type how you're doing…" />
-        <button type="submit">Send</button>
-      </form>
-      <p id="transcript" class="transcript" aria-live="polite"></p>
-    </section>
+        <section class="block">
+          <h2>Talk to Jerry</h2>
+          <div class="block-body">
+            <div class="row">
+              <button id="talk" disabled>Hold to talk <kbd>space</kbd></button>
+              <button id="checkin" disabled>Just check in</button>
+            </div>
+            <form id="manual-form" class="row">
+              <input type="text" id="manual-text" placeholder="or type how you're doing…" />
+              <button type="submit">Send</button>
+            </form>
+            <p id="speech-note" class="note"></p>
+            <p id="transcript" class="transcript" aria-live="polite"></p>
+          </div>
+        </section>
 
-    <section class="panel readouts">
-      <div><span class="label">Light</span><span id="light-val">—</span> <small id="light-bucket"></small></div>
-      <div><span class="label">Button</span><span id="btn-val">—</span></div>
-      <div><span class="label">Sentiment</span><span id="sentiment-val">—</span> <small id="sentiment-src"></small></div>
-    </section>
+        <section class="block">
+          <h2>Last decision <span id="decision-src" class="tag"></span></h2>
+          <div class="block-body">
+            <pre id="decision">(none yet)</pre>
+            <p id="reasoning" class="note"></p>
+          </div>
+        </section>
 
-    <section class="panel">
-      <h2>Last decision <small id="decision-src"></small></h2>
-      <pre id="decision">(none yet)</pre>
-      <p id="reasoning" class="note"></p>
-    </section>
-
-    <section class="panel log-panel">
-      <h2>Serial log</h2>
-      <pre id="log"></pre>
-    </section>
+        <section class="block">
+          <h2>Serial log</h2>
+          <div class="block-body">
+            <pre id="log"></pre>
+          </div>
+        </section>
+      </div>
+    </div>
 
     <footer>
-      <a href="https://github.com/vivaanwarrier/JerryCompanion">source</a> ·
-      mock mode needs nothing · USB mode needs Jerry on a cable + Chrome/Edge
+      <a href="https://github.com/vivaanwarrier/JerryCompanion">github.com/vivaanwarrier/JerryCompanion</a>
+      <span>·</span>
+      <span>mock mode needs nothing — USB mode needs Jerry on a cable + Chrome or Edge</span>
     </footer>
-  </main>
+  </div>
 
   <script type="module" src="./main.js"></script>
 </body>

@@ -7,40 +7,57 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <main>
-    <header>
-      <h1>Sentiment model check</h1>
-      <p class="tagline">
-        Runs the pretrained model (Transformers.js, in-browser) against sample
-        sentences so you can eyeball whether the labels look reasonable before
-        trusting it in the full loop.
-      </p>
+  <div class="wrap">
+    <header class="masthead">
+      <span class="brand">CHECK</span>
+      <span class="kicker">sentiment model sanity check</span>
     </header>
 
-    <section class="panel">
-      <button id="run">Run check</button>
-      <span id="status" class="status"></span>
+    <section class="block">
+      <h2>Run</h2>
+      <div class="block-body">
+        <p class="note">
+          Runs the pretrained model (Transformers.js, in-browser WASM) against
+          sample sentences so you can eyeball whether the labels look reasonable
+          before trusting it in the full loop.
+        </p>
+        <div class="row">
+          <button id="run" class="btn-primary">Run check</button>
+          <span id="status" class="status"></span>
+        </div>
+      </div>
     </section>
 
-    <section class="panel">
-      <table id="results">
-        <thead>
-          <tr><th>sentence</th><th>expected</th><th>bucket</th><th>label · score</th><th>src</th><th></th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-      <p id="summary" class="note"></p>
+    <section class="block">
+      <h2>Results</h2>
+      <div class="block-body">
+        <div style="overflow-x:auto">
+          <table id="results">
+            <thead>
+              <tr><th>sentence</th><th>expected</th><th>bucket</th><th>label · score</th><th>src</th><th></th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="summary" class="note"></p>
+      </div>
     </section>
 
     <footer><a href="./">← back to Jerry</a></footer>
-  </main>
+  </div>
 
   <style>
-    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-    th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; }
-    td.match { color: var(--accent); }
-    td.miss { color: var(--hot); }
+    #results { width: 100%; border-collapse: collapse; font: 12px/1.5 var(--mono); }
+    #results th, #results td {
+      text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    #results th {
+      color: var(--dim); text-transform: uppercase; font-size: 10px;
+      letter-spacing: 0.1em; border-bottom-color: var(--line-strong);
+    }
+    #results td.match { color: var(--accent); }
+    #results td.miss { color: #ff9a3c; }
   </style>
 
   <script type="module">

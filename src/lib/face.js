@@ -48,14 +48,13 @@ export class JerryStage {
     const { ctx, canvas } = this;
     const n = 8;
     const cell = canvas.width / n;
+    const pad = cell * 0.13;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     for (let r = 0; r < n; r++) {
       for (let c = 0; c < n; c++) {
         const on = (rows[r] >> (7 - c)) & 1;
-        ctx.fillStyle = on ? "#ff5a3c" : "rgba(255,255,255,0.05)";
-        ctx.beginPath();
-        ctx.arc(c * cell + cell / 2, r * cell + cell / 2, cell * 0.36, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillStyle = on ? "#ff5a3c" : "rgba(255,255,255,0.045)";
+        ctx.fillRect(c * cell + pad, r * cell + pad, cell - pad * 2, cell - pad * 2);
       }
     }
   }

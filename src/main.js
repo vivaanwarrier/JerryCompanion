@@ -39,7 +39,7 @@ function wireTransport(t) {
     latestLight = light;
     $("light-val").textContent = light;
     $("light-bucket").textContent = lightBucket(light);
-    $("btn-val").textContent = btn ? "pressed" : "released";
+    $("btn-val").textContent = btn ? "pressed" : "idle";
     if (btn === 1 && lastBtn === 0) runCheckin();
     lastBtn = btn;
   };
@@ -117,8 +117,7 @@ if (SR) {
   });
 } else {
   $("speech-note").textContent =
-    "Web Speech API not available here - type below or use the check-in button.";
-  $("manual-entry").hidden = false;
+    "Speech input isn't available in this browser — type below, or use “Just check in”.";
 }
 
 function startTalk() {
@@ -155,6 +154,7 @@ $("manual-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = $("manual-text").value.trim();
   if (text) runFromText(text);
+  $("manual-text").value = "";
 });
 
 // ------------------------------------------------------------------ pipeline ---
@@ -164,8 +164,8 @@ async function runFromText(text) {
   try {
     $("transcript").textContent = text;
     const sentiment = await classify(text);
-    $("sentiment-val").textContent = `${sentiment.bucket} · ${sentiment.score.toFixed(2)}`;
-    $("sentiment-src").textContent = sentiment.source;
+    $("sentiment-val").textContent = sentiment.bucket;
+    $("sentiment-src").textContent = `${sentiment.score.toFixed(2)} · ${sentiment.source}`;
     await dispatch({ text, sentiment, light: latestLight, buttonOnly: false });
   } catch (err) {
     setStatus("error: " + err.message);

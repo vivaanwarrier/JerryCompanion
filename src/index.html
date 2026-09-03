@@ -83,9 +83,10 @@
           <h2>Talk to Jerry</h2>
           <div class="block-body">
             <div class="row">
-              <button id="talk" disabled>Hold to talk <kbd>space</kbd></button>
+              <button id="talk" disabled><span id="talk-label">Talk</span> <kbd>space</kbd></button>
               <button id="checkin" disabled>Just check in</button>
             </div>
+            <p class="note">Tap to start, tap again (or just pause) to send.</p>
             <form id="manual-form" class="row">
               <input type="text" id="manual-text" placeholder="or type how you're doing…" />
               <button type="submit">Send</button>

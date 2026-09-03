@@ -88,33 +88,44 @@ $("light-slider").addEventListener("input", (e) => {
 $("mock-button").addEventListener("click", () => transport?.pressButton?.());
 
 // -------------------------------------------------------------------- speech ---
+// Tap-to-toggle: start listening, show words live, auto-send after a pause or a
+// second tap. Hold-to-talk is unreliable with the Web Speech API (it self-ends
+// on every pause), so we run it in continuous mode and control it ourselves.
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
-let listening = false;
+let listening = false; // the user wants to be listening
+let silenceTimer = null;
 
 if (SR) {
   recognition = new SR();
   recognition.lang = "en-US";
   recognition.interimResults = true;
-  recognition.continuous = false;
+  recognition.continuous = true;
 
   recognition.addEventListener("result", (e) => {
     let text = "";
     for (const r of e.results) text += r[0].transcript;
     $("transcript").textContent = text.trim();
+    clearTimeout(silenceTimer);
+    silenceTimer = setTimeout(() => stopTalk(), 2500); // auto-send after quiet
   });
+
   recognition.addEventListener("end", () => {
-    setListening(false);
+    if (listening) {
+      try { recognition.start(); } catch {} // Chrome drops the session periodically
+      return;
+    }
     const text = ($("transcript").textContent || "").trim();
     if (text) runFromText(text);
   });
+
   recognition.addEventListener("error", (e) => {
+    if (e.error === "no-speech" || e.error === "aborted") return; // 'end' handles it
+    listening = false;
     setListening(false);
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       $("speech-note").textContent =
-        "Microphone blocked. Click the 🔒 / camera icon in Chrome's address bar → allow the mic, then reload.";
-    } else if (e.error === "no-speech") {
-      setStatus("didn't catch that — hold the button and speak");
+        "Microphone blocked. Click the tune/lock icon at the left of Chrome's address bar, set Microphone to Allow, then reload.";
     } else {
       setStatus("speech error: " + e.error);
     }
@@ -125,8 +136,8 @@ if (SR) {
 }
 
 function setListening(on) {
-  listening = on;
   $("talk").classList.toggle("listening", on);
+  $("talk-label").textContent = on ? "Listening…" : "Talk";
   document.body.classList.toggle("listening", on);
   stage.setListening(on);
 }
@@ -137,23 +148,34 @@ function startTalk() {
     setStatus("connect Jerry first");
     return;
   }
+  listening = true;
   $("transcript").textContent = "";
   setListening(true);
   try {
     recognition.start();
   } catch {
-    setListening(false); // start() throws if a previous session is still closing
+    // a previous session is still closing - retry shortly
+    setTimeout(() => {
+      if (listening) {
+        try { recognition.start(); } catch {}
+      }
+    }, 300);
   }
 }
+
 function stopTalk() {
-  if (recognition && listening) recognition.stop();
+  if (!listening) return;
+  listening = false;
+  clearTimeout(silenceTimer);
+  setListening(false);
+  try { recognition.stop(); } catch {}
 }
 
-const talk = $("talk");
-talk.addEventListener("pointerdown", (e) => { e.preventDefault(); startTalk(); });
-talk.addEventListener("pointerup", stopTalk);
-talk.addEventListener("pointerleave", stopTalk);
-talk.addEventListener("pointercancel", stopTalk);
+function toggleTalk() {
+  listening ? stopTalk() : startTalk();
+}
+
+$("talk").addEventListener("click", (e) => { e.preventDefault(); toggleTalk(); });
 
 const isTyping = (el) =>
   el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
@@ -161,12 +183,7 @@ const isTyping = (el) =>
 window.addEventListener("keydown", (e) => {
   if (e.code !== "Space" || e.repeat || isTyping(e.target)) return;
   e.preventDefault(); // stop page scroll + activating a focused button
-  startTalk();
-});
-window.addEventListener("keyup", (e) => {
-  if (e.code !== "Space" || isTyping(e.target)) return;
-  e.preventDefault();
-  stopTalk();
+  toggleTalk();
 });
 
 $("checkin").addEventListener("click", runCheckin);

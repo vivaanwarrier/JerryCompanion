@@ -1,4 +1,4 @@
-/* Bring-up 2/6: SG90 servo.
+/* Bring-up 2/5: SG90 servo.
  * Wire ONLY the servo: SIG=9, VCC=5V (or external module), GND=GND.
  * Expected: two small "nods" every 2 s, returning to center.
  * If the board resets when it moves, power the servo externally (see DESIGN.md).

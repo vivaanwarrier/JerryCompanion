@@ -1,4 +1,4 @@
-/* Bring-up 4/6: passive buzzer.
+/* Bring-up 3/5: passive buzzer.
  * Wire ONLY the buzzer: SIG=8, GND=GND.
  * Expected: a two-note "chime" every 2 s.
  * No library needed. */

@@ -1,4 +1,4 @@
-/* Bring-up 6/6: push button.
+/* Bring-up 5/5: push button.
  * Wire ONLY the button: one leg to D7, the diagonal leg to GND.
  *   Uses the internal pull-up, so no external resistor is needed.
  * Expected: Serial Monitor (9600) prints BTN:1 while held, BTN:0 otherwise,

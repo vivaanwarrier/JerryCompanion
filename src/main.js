@@ -20,8 +20,7 @@ import { lightBucket } from "./lib/protocol.js";
 const $ = (id) => document.getElementById(id);
 
 const stage = new JerryStage({
-  canvas: $("matrix"),
-  lcd: $("lcd"),
+  canvas: $("screen"),
   servo: $("servo"),
   tone: $("tone-indicator"),
 });
@@ -43,9 +42,6 @@ function wireTransport(t) {
     if (btn === 1 && lastBtn === 0) runCheckin();
     lastBtn = btn;
   };
-  if (t.kind === "mock") {
-    t.onCommand = (reaction) => stage.apply(reaction);
-  }
 }
 
 async function connect() {
@@ -55,6 +51,7 @@ async function connect() {
     wireTransport(transport);
     await transport.connect();
     $("connect").textContent = "Disconnect";
+    $("connect").blur(); // so the spacebar goes to "talk", not back to this button
     $("talk").disabled = false;
     $("checkin").disabled = false;
     $("mock-controls").hidden = !useMock;
@@ -67,6 +64,8 @@ async function connect() {
 }
 
 async function disconnect() {
+  stopTalk();
+  setListening(false);
   await transport?.disconnect();
   transport = null;
   $("connect").textContent = "Connect";
@@ -105,30 +104,45 @@ if (SR) {
     $("transcript").textContent = text.trim();
   });
   recognition.addEventListener("end", () => {
-    listening = false;
-    $("talk").classList.remove("listening");
+    setListening(false);
     const text = ($("transcript").textContent || "").trim();
     if (text) runFromText(text);
   });
   recognition.addEventListener("error", (e) => {
-    listening = false;
-    $("talk").classList.remove("listening");
-    setStatus("speech error: " + e.error);
+    setListening(false);
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      $("speech-note").textContent =
+        "Microphone blocked. Click the 🔒 / camera icon in Chrome's address bar → allow the mic, then reload.";
+    } else if (e.error === "no-speech") {
+      setStatus("didn't catch that — hold the button and speak");
+    } else {
+      setStatus("speech error: " + e.error);
+    }
   });
 } else {
   $("speech-note").textContent =
     "Speech input isn't available in this browser — type below, or use “Just check in”.";
 }
 
+function setListening(on) {
+  listening = on;
+  $("talk").classList.toggle("listening", on);
+  document.body.classList.toggle("listening", on);
+  stage.setListening(on);
+}
+
 function startTalk() {
-  if (!recognition || listening || busy || !transport) return;
-  listening = true;
+  if (!recognition || listening || busy) return;
+  if (!transport) {
+    setStatus("connect Jerry first");
+    return;
+  }
   $("transcript").textContent = "";
-  $("talk").classList.add("listening");
+  setListening(true);
   try {
     recognition.start();
   } catch {
-    listening = false;
+    setListening(false); // start() throws if a previous session is still closing
   }
 }
 function stopTalk() {
@@ -136,17 +150,23 @@ function stopTalk() {
 }
 
 const talk = $("talk");
-talk.addEventListener("pointerdown", startTalk);
+talk.addEventListener("pointerdown", (e) => { e.preventDefault(); startTalk(); });
 talk.addEventListener("pointerup", stopTalk);
 talk.addEventListener("pointerleave", stopTalk);
+talk.addEventListener("pointercancel", stopTalk);
+
+const isTyping = (el) =>
+  el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+
 window.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && !e.repeat && e.target === document.body) {
-    e.preventDefault();
-    startTalk();
-  }
+  if (e.code !== "Space" || e.repeat || isTyping(e.target)) return;
+  e.preventDefault(); // stop page scroll + activating a focused button
+  startTalk();
 });
 window.addEventListener("keyup", (e) => {
-  if (e.code === "Space") stopTalk();
+  if (e.code !== "Space" || isTyping(e.target)) return;
+  e.preventDefault();
+  stopTalk();
 });
 
 $("checkin").addEventListener("click", runCheckin);

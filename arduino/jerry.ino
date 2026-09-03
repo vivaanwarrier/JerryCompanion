@@ -3,246 +3,241 @@
  *
  * Jerry only ever does two things:
  *   1. Read its two inputs (ambient light, push button) and stream them:
- *        LIGHT:412,BTN:0                         (every ~500 ms)
+ *        LIGHT:412,BTN:0                          (every ~500 ms)
  *   2. Parse one command line per decision and drive the outputs:
  *        FACE:SLEEPY;SERVO:NOD;LCD:Rest up.;TONE:NONE
  *
- * Malformed / partial lines are ignored - Jerry keeps running. On boot it
- * prints "READY jerry v1" so the host knows it (re)started.
+ * Malformed / partial lines are ignored - Jerry keeps running. Commands are
+ * accepted with any line ending (or none - they're processed on a short pause).
+ * On boot it prints "READY jerry v3".
  *
- * Pin map (Arduino Uno; pins 0-1 are the USB serial line - unused here):
- *   MAX7219 dot-matrix   DIN=12  CLK=11  CS=10
- *   SG90 servo           SIG=9
- *   Buzzer               SIG=8
- *   Push button          D7  (INPUT_PULLUP, pressed = LOW)
- *   LCD1602 (4-bit)      RS=13  E=6  D4=5  D5=4  D6=3  D7=2
- *   Photoresistor        A0  (voltage divider with the kit resistor)
+ * Hardware (Arduino Uno):
+ *   SSD1306 128x64 I2C OLED   SDA=A4  SCL=A5   VCC=5V  GND=GND   (Jerry's face + message)
+ *   SG90 servo               signal=9                            (nod / perk)
+ *   Passive buzzer           signal=8                            (tone)
+ *   Push button              pin 7 (INPUT_PULLUP, pressed = LOW)  (check-in)
+ *   Photoresistor            A0 (voltage divider with a 10k resistor)
  *
- * Libraries: LedControl, Servo, LiquidCrystal
+ * Libraries: U8g2 (page-buffer mode - light on RAM), Servo.
+ *
+ * The serial protocol, the website, and the mood agent are all unchanged from
+ * the original design; only the "face" is rendered differently (an OLED drawing
+ * instead of an 8x8 LED matrix).
  */
 
-#include <LedControl.h>
+#include <U8g2lib.h>
+#include <Wire.h>
 #include <Servo.h>
-#include <LiquidCrystal.h>
 
-// ---- pins ----
-const uint8_t PIN_MATRIX_DIN = 12;
-const uint8_t PIN_MATRIX_CLK = 11;
-const uint8_t PIN_MATRIX_CS  = 10;
-const uint8_t PIN_SERVO      = 9;
-const uint8_t PIN_BUZZER     = 8;
-const uint8_t PIN_BUTTON     = 7;
-const uint8_t PIN_LIGHT      = A0;
+void readSerial();
+void updateButton();
+void handle(String line);
+void setFace(String v);
+void doServo(String v);
+void doTone(String v);
+void scheduleBlink();
+void mouth(int cx, int cy, int w, int curve);
+void render();
+void drawScene();
 
-// ---- peripherals ----
-LedControl matrix(PIN_MATRIX_DIN, PIN_MATRIX_CLK, PIN_MATRIX_CS, 1);
+U8G2_SSD1306_128X64_NONAME_1_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
 Servo nodServo;
-LiquidCrystal lcd(13, 6, 5, 4, 3, 2);  // RS, E, D4, D5, D6, D7
 
-// ---- 8x8 faces (row bitmaps, MSB = left) ----
-const byte FACE_HAPPY[8]     = {0x00,0x66,0x66,0x00,0x81,0x42,0x3C,0x00};
-const byte FACE_NEUTRAL[8]   = {0x00,0x66,0x66,0x00,0x00,0x7E,0x00,0x00};
-const byte FACE_CONCERNED[8] = {0x00,0x66,0x66,0x00,0x00,0x3C,0x42,0x81};
-const byte FACE_SLEEPY[8]    = {0x00,0x7E,0x00,0x00,0x00,0x3C,0x00,0x00};
+const uint8_t PIN_SERVO  = 9;
+const uint8_t PIN_BUZZER = 8;
+const uint8_t PIN_BUTTON = 7;
+const uint8_t PIN_LIGHT  = A0;
+const int     SERVO_REST = 90;
 
-const byte* currentFace = FACE_NEUTRAL;
+enum Face { F_HAPPY, F_NEUTRAL, F_CONCERNED, F_SLEEPY };
+Face face = F_NEUTRAL;
+String message = "Hi, I'm Jerry.";
+int  scrollX = 0;
+bool dirty = true;
 
-// ---- LCD scroll state ----
-String lcdText = "Hi, I'm Jerry.";
-int lcdOffset = 0;
-unsigned long lcdLastScroll = 0;
-const unsigned long LCD_SCROLL_MS = 320;
-
-// ---- blink state (non-blocking) ----
-unsigned long blinkAt = 0;
+unsigned long lastScroll = 0, lastTele = 0, blinkAt = 0, lastRxAt = 0;
 bool blinking = false;
+const unsigned long SCROLL_MS = 90, TELE_MS = 500;
 
-// ---- telemetry cadence ----
-unsigned long lastTelemetry = 0;
-const unsigned long TELEMETRY_MS = 500;
-
-// ---- button debounce ----
-int btnStable = HIGH;
-int btnLastRead = HIGH;
-unsigned long btnChangedAt = 0;
-const unsigned long BTN_DEBOUNCE_MS = 25;
-
-// ---- serial line buffer ----
-String rxLine = "";
-
-const int SERVO_REST = 90;
+int btnStable = HIGH, btnLast = HIGH;
+unsigned long btnChanged = 0;
+String rx = "";
 
 void setup() {
   Serial.begin(9600);
-
-  matrix.shutdown(0, false);
-  matrix.setIntensity(0, 2);   // keep low - see docs/wiring.md current-draw note
-  matrix.clearDisplay(0);
-  drawFace(FACE_NEUTRAL);
+  delay(400);
+  Serial.println(F("READY jerry v3"));
 
   nodServo.attach(PIN_SERVO);
   nodServo.write(SERVO_REST);
-
-  lcd.begin(16, 2);
-  lcd.print("Jerry ready");
-
-  pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_BUZZER, OUTPUT);
+  pinMode(PIN_BUTTON, INPUT_PULLUP);
 
-  delay(300);
-  lcd.clear();
-  Serial.println("READY jerry v1");
+  u8g2.begin();
   scheduleBlink();
 }
 
 void loop() {
   readSerial();
   updateButton();
-  scrollLcd();
-  updateBlink();
 
   unsigned long now = millis();
-  if (now - lastTelemetry >= TELEMETRY_MS) {
-    lastTelemetry = now;
-    Serial.print("LIGHT:");
+  int tw = message.length() * 6;
+  bool scrolling = tw > 122;
+
+  if (scrolling && now - lastScroll >= SCROLL_MS) {
+    lastScroll = now;
+    int span = tw + 20;
+    scrollX -= 3;
+    if (scrollX <= -span) scrollX += span;
+    dirty = true;
+  }
+
+  if (!blinking && now >= blinkAt)     { blinking = true;  blinkAt = now + 120; dirty = true; }
+  else if (blinking && now >= blinkAt) { blinking = false; scheduleBlink();     dirty = true; }
+
+  if (dirty) { render(); dirty = false; }
+
+  if (now - lastTele >= TELE_MS) {
+    lastTele = now;
+    Serial.print(F("LIGHT:"));
     Serial.print(analogRead(PIN_LIGHT));
-    Serial.print(",BTN:");
-    Serial.println(btnStable == LOW ? 1 : 0);   // pull-up: pressed = LOW
+    Serial.print(F(",BTN:"));
+    Serial.println(btnStable == LOW ? 1 : 0);
   }
 }
 
 // ---------------------------------------------------------------- inputs ---
 void updateButton() {
-  int reading = digitalRead(PIN_BUTTON);
-  if (reading != btnLastRead) {
-    btnChangedAt = millis();
-    btnLastRead = reading;
-  }
-  if (millis() - btnChangedAt > BTN_DEBOUNCE_MS && reading != btnStable) {
-    btnStable = reading;
-  }
+  int r = digitalRead(PIN_BUTTON);
+  if (r != btnLast) { btnChanged = millis(); btnLast = r; }
+  if (millis() - btnChanged > 25 && r != btnStable) btnStable = r;
 }
 
-// ------------------------------------------------------- host -> outputs ---
+// ----------------------------------------------------- host -> outputs ---
 void readSerial() {
-  while (Serial.available() > 0) {
-    char c = (char)Serial.read();
-    if (c == '\n') {
-      handleCommand(rxLine);
-      rxLine = "";
-    } else if (c != '\r') {
-      rxLine += c;
-      if (rxLine.length() > 200) rxLine = "";   // runaway guard
+  while (Serial.available()) {
+    char c = Serial.read();
+    lastRxAt = millis();
+    if (c == '\n' || c == '\r') {
+      if (rx.length()) { handle(rx); rx = ""; }
+    } else {
+      rx += c;
+      if (rx.length() > 120) rx = "";
     }
   }
+  if (rx.length() && millis() - lastRxAt > 120) { handle(rx); rx = ""; }  // no line ending -> process on pause
 }
 
-// FACE:X;SERVO:Y;LCD:some text;TONE:Z  - unknown fields/values are skipped.
-void handleCommand(String line) {
+// FACE:X;SERVO:Y;LCD:some text;TONE:Z  - unknown fields / values are skipped.
+void handle(String line) {
   line.trim();
-  if (line.length() == 0) return;
+  if (!line.length()) return;
 
   int start = 0;
   while (start < (int)line.length()) {
     int sep = line.indexOf(';', start);
     if (sep == -1) sep = line.length();
-    String field = line.substring(start, sep);
+    String f = line.substring(start, sep);
     start = sep + 1;
 
-    int colon = field.indexOf(':');
-    if (colon == -1) continue;
-    String key = field.substring(0, colon);
-    String val = field.substring(colon + 1);
-    key.trim(); val.trim(); key.toUpperCase();
+    int c = f.indexOf(':');
+    if (c == -1) continue;
+    String k = f.substring(0, c); k.trim(); k.toUpperCase();
+    String v = f.substring(c + 1); v.trim();
 
-    if (key == "FACE")       applyFace(val);
-    else if (key == "SERVO") applyServo(val);
-    else if (key == "LCD")   applyLcd(val);
-    else if (key == "TONE")  applyTone(val);
+    if (k == "FACE")       setFace(v);
+    else if (k == "SERVO") doServo(v);
+    else if (k == "LCD")   { if (v.length()) { message = v.substring(0, 90); scrollX = 0; } }
+    else if (k == "TONE")  doTone(v);
   }
+  dirty = true;
 }
 
-void applyFace(String v) {
+void setFace(String v) {
   v.toUpperCase();
-  if (v == "HAPPY")          drawFace(FACE_HAPPY);
-  else if (v == "NEUTRAL")   drawFace(FACE_NEUTRAL);
-  else if (v == "CONCERNED") drawFace(FACE_CONCERNED);
-  else if (v == "SLEEPY")    drawFace(FACE_SLEEPY);
+  if (v == "HAPPY")          face = F_HAPPY;
+  else if (v == "NEUTRAL")   face = F_NEUTRAL;
+  else if (v == "CONCERNED") face = F_CONCERNED;
+  else if (v == "SLEEPY")    face = F_SLEEPY;
 }
 
-void applyServo(String v) {
+void doServo(String v) {
   v.toUpperCase();
-  if (v == "NOD")        gesture(2, 60, 120);
-  else if (v == "PERK")  gesture(1, 90, 140);
-  else if (v == "STILL") nodServo.write(SERVO_REST);
-}
-
-void applyLcd(String v) {
-  if (v.length() == 0) return;
-  lcdText = v;
-  lcdOffset = 0;
-  lcdLastScroll = 0;
-}
-
-void applyTone(String v) {
-  v.toUpperCase();
-  if (v == "CHIME") {
-    tone(PIN_BUZZER, 880, 120);  delay(140);
-    tone(PIN_BUZZER, 1175, 160); delay(180);
-    noTone(PIN_BUZZER);
-  } else if (v == "GENTLE_BEEP") {
-    tone(PIN_BUZZER, 523, 180);  delay(200);
-    noTone(PIN_BUZZER);
-  }
-  // NONE -> silence
-}
-
-// --------------------------------------------------------- output helpers ---
-void drawFace(const byte face[8]) {
-  currentFace = face;
-  for (int r = 0; r < 8; r++) matrix.setRow(0, r, face[r]);
-}
-
-void gesture(int reps, int lo, int hi) {
-  for (int i = 0; i < reps; i++) {
-    nodServo.write(lo); delay(180);
-    nodServo.write(hi); delay(180);
+  if (v == "NOD") {
+    for (int i = 0; i < 2; i++) { nodServo.write(66); delay(150); nodServo.write(114); delay(150); }
+  } else if (v == "PERK") {
+    nodServo.write(130); delay(170); nodServo.write(70); delay(120);
   }
   nodServo.write(SERVO_REST);
 }
 
-void scrollLcd() {
-  unsigned long now = millis();
-  if (now - lcdLastScroll < LCD_SCROLL_MS) return;
-  lcdLastScroll = now;
-
-  String padded = lcdText + "   ";
-  int n = padded.length();
-  lcd.setCursor(0, 0);
-  if (n <= 16) {
-    lcd.print(lcdText);
-    for (int i = lcdText.length(); i < 16; i++) lcd.print(' ');
-    return;
+void doTone(String v) {
+  v.toUpperCase();
+  if (v == "CHIME") {
+    tone(PIN_BUZZER, 880, 120);  delay(150);
+    tone(PIN_BUZZER, 1320, 180); delay(210);
+    noTone(PIN_BUZZER);
+  } else if (v == "GENTLE_BEEP") {
+    tone(PIN_BUZZER, 523, 200); delay(230);
+    noTone(PIN_BUZZER);
   }
-  for (int i = 0; i < 16; i++) lcd.print(padded.charAt((lcdOffset + i) % n));
-  lcdOffset = (lcdOffset + 1) % n;
 }
 
-void scheduleBlink() {
-  blinkAt = millis() + 3000 + random(2500);
+// --------------------------------------------------------- output: the face ---
+void scheduleBlink() { blinkAt = millis() + 2600 + random(2800); }
+
+void mouth(int cx, int cy, int w, int curve) {
+  int px = cx - w, py = cy;
+  for (int x = -w + 1; x <= w; x++) {
+    int y = cy + curve * (w * w - x * x) / (w * w);
+    u8g2.drawLine(px, py, cx + x, y);
+    px = cx + x; py = y;
+  }
 }
 
-void updateBlink() {
-  unsigned long now = millis();
-  if (!blinking && now >= blinkAt) {
-    blinking = true;
-    blinkAt = now + 120;
-    matrix.setRow(0, 1, 0x00);          // close eyes
-    matrix.setRow(0, 2, 0x00);
-  } else if (blinking && now >= blinkAt) {
-    blinking = false;
-    matrix.setRow(0, 1, currentFace[1]); // reopen
-    matrix.setRow(0, 2, currentFace[2]);
-    scheduleBlink();
+void render() {
+  u8g2.firstPage();
+  do { drawScene(); } while (u8g2.nextPage());
+}
+
+void drawScene() {
+  int lx = 44, rx2 = 84, ey = 22;
+
+  if (blinking) {
+    u8g2.drawHLine(lx - 6, ey, 12);
+    u8g2.drawHLine(rx2 - 6, ey, 12);
+  } else if (face == F_SLEEPY) {
+    mouth(lx, ey, 7, -3);
+    mouth(rx2, ey, 7, -3);
+  } else {
+    u8g2.drawDisc(lx, ey, 5);
+    u8g2.drawDisc(rx2, ey, 5);
+  }
+
+  if (face == F_CONCERNED) {
+    u8g2.drawLine(lx - 8, ey - 8, lx + 5, ey - 12);
+    u8g2.drawLine(rx2 + 8, ey - 8, rx2 - 5, ey - 12);
+  }
+
+  int curve = 0;
+  if (face == F_HAPPY)          curve = 7;
+  else if (face == F_CONCERNED) curve = -6;
+  else if (face == F_SLEEPY)    curve = 2;
+  mouth(64, 38, 16, curve);
+
+  u8g2.setFont(u8g2_font_6x10_tf);
+  if (face == F_SLEEPY) {
+    u8g2.drawStr(98, 14, "z");
+    u8g2.drawStr(106, 8, "z");
+  }
+
+  int tw = message.length() * 6;
+  if (tw <= 122) {
+    u8g2.drawStr((128 - tw) / 2, 62, message.c_str());
+  } else {
+    int span = tw + 20;
+    u8g2.drawStr(scrollX, 62, message.c_str());
+    u8g2.drawStr(scrollX + span, 62, message.c_str());
   }
 }

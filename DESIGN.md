@@ -14,7 +14,7 @@
                                             set_reaction: { face, servo, lcd, tone, reasoning }
                                                           │
                               <──USB serial── [Browser sends one command string]
-[Jerry: matrix face, servo, LCD, buzzer] ── executes the command   (on-screen Jerry mirrors it)
+[Jerry: OLED face + message, servo, buzzer] ── executes the command   (on-screen Jerry mirrors it)
 ```
 
 Jerry's firmware only ever (a) reads its two inputs and (b) executes command
@@ -45,7 +45,7 @@ protocol and is shared by the frontend, the mock, the endpoint, and the tests.
 |---|---|
 | `FACE` | `HAPPY` `NEUTRAL` `CONCERNED` `SLEEPY` |
 | `SERVO` | `NOD` `PERK` `STILL` |
-| `LCD` | free text (delimiters + newlines stripped, capped at 80 chars client-side) |
+| `LCD` | free text — the message shown under the face (delimiters + newlines stripped, capped ~80 chars). Field kept named `LCD` for protocol compatibility even though it's an OLED now. |
 | `TONE` | `CHIME` `GENTLE_BEEP` `NONE` |
 
 ## The mood agent
@@ -88,16 +88,29 @@ Jerry never freezes.
 Light bucketing lives in `src/lib/protocol.js` (`LIGHT_THRESHOLDS`, raw
 `analogRead` units) — tune `dim` / `bright` to your room and divider resistor.
 
+## The face
+
+The build uses a **128×64 I²C OLED** as Jerry's face — it draws real eyes, a
+mouth curve per mood (`happy` / `neutral` / `concerned` / `sleepy`), an idle
+blink, and scrolls the message underneath. This replaces both the 8×8 LED matrix
+*and* the LCD1602 from the original parts list — one display does both jobs, with
+far less wiring, and it dodges the matrix's current-draw problems.
+
+Firmware ([`arduino/jerry.ino`](arduino/jerry.ino)) drives it with **U8g2 in
+page-buffer mode**: the screen buffer is ~128 bytes instead of the full 1 KB, so
+the rest of the sketch (Servo, Serial, the command parser's strings) fits in the
+Uno's 2 KB of RAM. The full-buffer library crash-loops on boot.
+
 ## Hardware-free simulation
 
 The transport is abstracted ([`src/lib/serial.js`](src/lib/serial.js) vs
 [`src/lib/mock.js`](src/lib/mock.js), same interface). **Mock mode** streams
 telemetry from a light slider + a button, and "executes" commands by driving the
-on-screen Jerry ([`src/lib/face.js`](src/lib/face.js)) — an 8×8 canvas face with
-the same bitmaps as the firmware, an animated servo, a scrolling LCD, and a
-WebAudio tone. The whole pipeline (speech → sentiment → agent → reaction) runs
-with nothing plugged in, so the software is fully testable and demoable on its
-own. The on-screen Jerry also mirrors real hardware in USB mode.
+on-screen Jerry ([`src/lib/face.js`](src/lib/face.js)) — a simulated 128×64 OLED
+drawn with the same shapes and layout as the firmware, plus an animated servo
+indicator and a WebAudio tone. The whole pipeline (speech → sentiment → agent →
+reaction) runs with nothing plugged in, so the software is fully testable and
+demoable on its own. The on-screen Jerry also mirrors real hardware in USB mode.
 
 ## Design decisions
 
@@ -114,8 +127,9 @@ own. The on-screen Jerry also mirrors real hardware in USB mode.
   time (see the mood-agent section).
 - **Always-answers fallback.** No key / API down → rule-based reaction, so a demo
   never dead-ends.
-- **Low matrix brightness by default.** Mitigates the regulator current-draw
-  issue before it happens (see [`docs/wiring.md`](docs/wiring.md)).
+- **One OLED instead of matrix + LCD.** Fewer wires, no matrix current-draw
+  gremlins, more expressive face, and it frees ~8 pins. Page-buffer mode keeps it
+  inside the Uno's RAM budget (see the face section and [`docs/wiring.md`](docs/wiring.md)).
 
 ## Testing
 
@@ -135,5 +149,6 @@ before integration. Full pin map and the current-draw gotcha are in
 
 ## Stretch goals (not yet built)
 
+- RGB LED on 3 free digital pins → a physical mood-colour glow.
 - DHT11 temp/humidity on A1 → extra context for the mood agent.
 - IR receiver on A2 → alternate physical input to the button.

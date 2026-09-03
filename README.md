@@ -3,15 +3,14 @@
 Jerry is a small physical desk companion built on an Arduino Uno. You speak to
 it about how you're doing, a pretrained sentiment model reads the emotional tone
 of what you said, a mood agent combines that with the room's real ambient light
-level, and Jerry reacts — a pixel-art face, a nodding servo, a scrolling LCD
-message, and a short tone.
+level, and Jerry reacts — a face on an OLED, a nodding servo, a short scrolling
+message, and a tone.
 
-A real, fully-wired hardware build — and it also runs end to end with **no
-hardware at all** (mock mode), so the software can be developed and demoed on
-its own.
+A real, wired-up hardware build — and it also runs end to end with **no hardware
+at all** (mock mode), so the software can be developed and demoed on its own.
 
 **Live demo:** https://jerry-companion.vercel.app — works in mock mode with
-nothing plugged in. _(Demo gif: TODO once the build is assembled.)_
+nothing plugged in. _(Demo gif: TODO.)_
 
 ## How it works
 
@@ -59,26 +58,29 @@ npm run dev
 
 ## Hardware
 
+Built with an Arduino Uno starter kit plus one add-on OLED.
+
 | Component | Pin(s) |
 |---|---|
-| MAX7219 8x8 LED matrix (face) | DIN=12, CLK=11, CS=10 |
+| SSD1306 128×64 I²C OLED (face + message) | SDA=A4, SCL=A5 |
 | SG90 servo (nod) | 9 |
-| LCD1602 (4-bit, scrolling text) | RS=13, E=6, D4=5, D5=4, D6=3, D7=2 |
-| Buzzer (tone) | 8 |
-| Photoresistor (ambient light) | A0 |
+| Passive buzzer (tone) | 8 |
 | Push button (check-in) | 7 (`INPUT_PULLUP`) |
+| Photoresistor (ambient light) | A0 + a 10 kΩ resistor |
 
-Arduino libraries: `LedControl`, `Servo` (built in), `LiquidCrystal` (built in).
+Arduino libraries: **U8g2** (from Library Manager — used in page-buffer mode so
+it fits the Uno's RAM), `Servo` (built in).
 
-Wire and verify **one component at a time** with the sketches in
+The OLED replaces the original plan's 8×8 LED matrix *and* LCD1602 — one screen
+does the face and the scrolling text, with far less wiring. Wire and verify
+**one component at a time** with the sketches in
 [`arduino/bring-up/`](arduino/bring-up/), then flash
-[`arduino/jerry.ino`](arduino/jerry.ino). On boot Jerry prints `READY jerry v1`.
-Full wiring notes and the matrix+servo current-draw gotcha:
-[`docs/wiring.md`](docs/wiring.md).
+[`arduino/jerry.ino`](arduino/jerry.ino). On boot Jerry prints `READY jerry v3`.
+Full pin map and the gotchas: [`docs/wiring.md`](docs/wiring.md).
 
 ### Test the serial protocol by hand
 
-In the Arduino Serial Monitor (9600 baud, newline), type:
+In the Arduino Serial Monitor (9600 baud — line ending doesn't matter), type:
 
 ```
 FACE:HAPPY;SERVO:NOD;LCD:Hello there;TONE:CHIME
@@ -117,7 +119,7 @@ src/
     rules.js              deterministic mood-agent fallback
     serial.js  mock.js    Web Serial transport + a hardware-free mock
     sentiment.js          Transformers.js sentiment classifier
-    agent.js  face.js     mood-agent client + the on-screen Jerry
+    agent.js  face.js     mood-agent client + the on-screen Jerry (simulated OLED)
 api/
   agent.js               the mood agent: stateless endpoint, one strict Claude tool call
 scripts/
@@ -130,10 +132,10 @@ DESIGN.md                 architecture, protocol, mood-agent definition, decisio
 
 ## Status
 
-Software complete and exercised in mock mode (sentiment model, agent, protocol,
-UI, tests all green). The live Claude path follows the current SDK but hasn't
-been run against a real key yet. Hardware not yet assembled — next step is
-per-component bring-up.
+Working end to end. Hardware assembled on a breadboard (OLED + servo + buzzer +
+button + photoresistor) and driven live from the deployed site over USB serial;
+the mood agent runs on Claude. Software: mock mode, tests, and the sanity-check
+scripts all green.
 
 ## License
 
